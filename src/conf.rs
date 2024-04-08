@@ -1,23 +1,25 @@
-///! Handles application configuration.
+#![allow(dead_code, unused_variables)]
 
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, Result};
 use home::home_dir;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
+///! Handles application configuration.
 
 /// The name of the default config directory expected
 /// to be in the user's $HOME directory.
-const CONFIG_DIR_NAME: &str = ".graphctl";
+pub const CONFIG_DIR_NAME: &str = ".graphctl";
 
 /// The name of the config file within the config directory.
-const CONFIG_FILE_NAME: &str = "config.toml";
+pub const CONFIG_FILE_NAME: &str = "config.toml";
 
 /// The name of the directory (within the config directory) where
 /// where the database files (main db file, WAL, etc.) are stored.
-const DB_DIR_NAME: &str = "data";
+pub const DB_DIR_NAME: &str = "data";
 
 /// The name of the main database file.
-const DB_FILE_NAME: &str = "graph.db";
+pub const DB_FILE_NAME: &str = "graph.db";
 
 /// Get the path to the app config directory.
 pub fn get_config_dir(config_dir: Option<String>) -> Option<PathBuf> {
@@ -47,31 +49,74 @@ pub fn get_db_file(config_dir: &PathBuf) -> PathBuf {
     config_dir.join(DB_DIR_NAME).join(DB_FILE_NAME)
 }
 
-#[derive(Debug,Serialize,Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Config {
-    db: DBConfig,
+    #[serde(skip)]
+    pub conf_dir: PathBuf,
+
+    pub db: DbConfig,
 }
 
-#[derive(Debug,Serialize,Deserialize)]
-pub struct DBConfig {
-    #[serde(rename = "type")] 
-    db_type: DBType,
-    remote_db_path: Option<String>,
-    encrypt_replica: bool,
-    read_your_writes: bool,
+impl Config {
+    pub fn new(config_dir: Option<String>) -> Result<Self> {
+        let conf_dir = match get_config_dir(config_dir) {
+            Some(cd) => cd,
+            None => return Err(anyhow!("Could not get config directory.")),
+        };
+        Ok(Self {
+            conf_dir,
+            db: DbConfig {
+                db_type: DBType::Local,
+                remote_db_path: None,
+                encrypt_replica: false,
+            },
+        })
+    }
+
+    pub fn read_from_file(config_dir: Option<String>) -> Result<Self> {
+        let conf_dir = match get_config_dir(config_dir) {
+            Some(cd) => cd,
+            None => return Err(anyhow!("Could not get config directory.")),
+        };
+        let conf_file = get_config_file(&conf_dir);
+        let conf_str = std::fs::read_to_string(conf_file)?;
+        let conf: Config = toml::from_str(&conf_str)?;
+        Ok(conf)
+    }
+
+    pub fn write_to_file(&self) -> Result<()> {
+        let conf_file = get_config_file(&self.conf_dir);
+        let conf_str = toml::to_string(self)?;
+        std::fs::write(conf_file, conf_str)?;
+        Ok(())
+    }
 }
 
-#[derive(Debug,Serialize,Deserialize,Default)]
+/// Configuration for the underlying database.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct DbConfig {
+    /// The type/location of database to use.
+    #[serde(rename = "type")]
+    pub db_type: DBType,
+
+    /// If `db_type` is `remote` or `remote-with-replica`,
+    /// the path to the remote database.
+    pub remote_db_path: Option<String>,
+
+    /// If `db_type` is `local` or `remote-with-replica`,
+    /// should the replica be encrypted?
+    pub encrypt_replica: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub enum DBType {
     #[default]
     #[serde(rename = "local")]
     Local,
-    
+
     #[serde(rename = "remote-only")]
     RemoteOnly,
 
     #[serde(rename = "remote-with-replica")]
-    RemoteWithReplica
+    RemoteWithReplica,
 }
-
-
