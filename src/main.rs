@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
     };
-    
+
     // Is this a init command?
     if matches!(app.cmd, Commands::Cfg { cmd: CfgCmd::Init }) {
         // Check that the config dir doesn't already exist...
@@ -141,18 +141,18 @@ async fn main() -> Result<()> {
     }
 
     // Now make the config variable immutable...
-    let cfg = Config::read_from_file(Some(conf_dir.to_string_lossy().to_string()))
+    let cfg = Config::read_from_file(&conf_dir)
         .context("Could not read config file.")?;
 
     // Make sure the config directory already exists...
-    if !cfg.conf_dir.exists()  {
+    if !cfg.conf_dir.exists() {
         eprintln!(
             "Error: Config directory \"{}\" doesn't exist. Run `graphctl init` to create it",
             cfg.conf_dir.display(),
         );
         std::process::exit(1);
     }
-    
+
     // Make sure the config directory is a directory...
     if !cfg.conf_dir.is_dir() {
         eprintln!(
@@ -309,20 +309,32 @@ Remove it and then run `graphctl init` to create it",
             }
         },
         Commands::List { cmd } => match cmd {
-            ListCmd::Nodes(args) => {
-                println!("Listing nodes. Args: {:?}", args);
+            ListCmd::Nodes(_args) => {
+                // Get the node list...
+                let res = db::list_nodes(&conn, &db::ListNodesParams {}).await?;
+
+                // Print the result...
+                println!("{}", serde_json::to_string_pretty(&res)?);
             }
-            ListCmd::Edges(args) => {
-                println!("Listing edges. Args: {:?}", args);
+            ListCmd::Edges(_args) => {
+                // Get the edge list...
+                let res = db::list_edges(&conn, &db::ListEdgesParams {}).await?;
+
+                // Print the result...
+                println!("{}", serde_json::to_string_pretty(&res)?);
             }
         },
         Commands::Get { cmd } => match cmd {
             GetCmd::Node(args) => {
                 // Get the node...
-                let res = db::get_node(&conn, &db::GetNodeParams {
-                    id: args.id.clone(),
-                    with_props: args.props,
-                }).await?;
+                let res = db::get_node(
+                    &conn,
+                    &db::GetNodeParams {
+                        id: args.id.clone(),
+                        with_props: args.props,
+                    },
+                )
+                .await?;
 
                 // Get the node's edges in and out...
                 let edges_in = match args.edges_in {
@@ -345,14 +357,17 @@ Remove it and then run `graphctl init` to create it",
                     "updated_at": res.updated_at,
                 });
                 println!("{}", serde_json::to_string_pretty(&data)?);
-
             }
             GetCmd::Edge(args) => {
                 // Get the edge...
-                let res = db::get_edge(&conn, &db::GetEdgeParams{
-                    id: args.id,
-                    with_props: args.props,
-                }).await?;
+                let res = db::get_edge(
+                    &conn,
+                    &db::GetEdgeParams {
+                        id: args.id,
+                        with_props: args.props,
+                    },
+                )
+                .await?;
 
                 // Print the result...
                 println!("{}", serde_json::to_string_pretty(&res)?);

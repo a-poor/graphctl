@@ -73,14 +73,11 @@ impl Config {
         })
     }
 
-    pub fn read_from_file(config_dir: Option<String>) -> Result<Self> {
-        let conf_dir = match get_config_dir(config_dir) {
-            Some(cd) => cd,
-            None => return Err(anyhow!("Could not get config directory.")),
-        };
-        let conf_file = get_config_file(&conf_dir);
+    pub fn read_from_file(config_dir: &PathBuf) -> Result<Self> {
+        let conf_file = get_config_file(config_dir);
         let conf_str = std::fs::read_to_string(conf_file)?;
-        let conf: Config = toml::from_str(&conf_str)?;
+        let mut conf: Config = toml::from_str(&conf_str)?;
+        conf.conf_dir = config_dir.clone();
         Ok(conf)
     }
 

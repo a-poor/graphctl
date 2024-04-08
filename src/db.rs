@@ -1,6 +1,5 @@
 #![allow(dead_code, unused_variables)]
 ///! Handles the connection to the database.
-
 use super::conf::{Config, DBType, DB_DIR_NAME, DB_FILE_NAME};
 use super::secrets::{get_local_db_encryption_key, get_remote_db_auth_token};
 use crate::util;
@@ -213,8 +212,8 @@ pub async fn migrations_v1(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS edges (
             id         TEXT PRIMARY KEY, 
             edge_type  TEXT NOT NULL,
-            from_edge  TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-            to_edge    TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+            from_node  TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+            to_node    TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
             directed   INT  NOT NULL,
             created_at TEXT NOT NULL, 
             updated_at TEXT NOT NULL
@@ -359,8 +358,8 @@ pub async fn create_edge(conn: &Connection, params: &CreateEdgeParams) -> Result
         INSERT INTO edges (
             id, 
             edge_type, 
-            from_edge, 
-            to_edge, 
+            from_node, 
+            to_node, 
             directed, 
             created_at, 
             updated_at
@@ -422,13 +421,72 @@ pub async fn create_edge(conn: &Connection, params: &CreateEdgeParams) -> Result
 pub struct ListNodesParams;
 
 pub async fn list_nodes(conn: &Connection, params: &ListNodesParams) -> Result<Vec<DbNode>> {
-    todo!();
+    let mut res = conn
+        .prepare(
+            "
+            SELECT id, labels, created_at, updated_at
+            FROM nodes;
+            "
+        )
+        .await?
+        .query(libsql::params![])
+        .await?;
+    
+    let mut nodes = Vec::new();
+    while let Some(row) = res.next().await? {
+        // let node = de::from_row::<DbNode>(&row)?;
+
+        // Get the values...
+        let id: String = row.get(0)?;
+        let slabels: String = row.get(1)?;
+        let labels: Vec<String> = serde_json::from_str(&slabels)?;
+        let created_at: DateTime<Local> = row.get::<String>(2)?.parse()?;
+        let updated_at: DateTime<Local> = row.get::<String>(3)?.parse()?;
+       
+        // Get the props...
+        let props = get_node_props(conn, &id).await?;
+
+        // Add it to the list...
+        nodes.push(DbNode {
+            id,
+            labels,
+            props: Some(props),
+            created_at,
+            updated_at,
+        });
+    }
+
+    Ok(nodes)
 }
 
 pub struct ListEdgesParams;
 
 pub async fn list_edges(conn: &Connection, params: &ListEdgesParams) -> Result<Vec<DbEdge>> {
-    todo!();
+    let mut res = conn
+        .prepare(
+            "
+            SELECT id, edge_type, from_node, to_node, directed, created_at, updated_at
+            FROM edges;
+            "
+        )
+        .await?
+        .query(libsql::params![])
+        .await?;
+    
+    let mut edges = Vec::new();
+    while let Some(row) = res.next().await? {
+        // Get the values...
+        let mut e = de::from_row::<DbEdge>(&row)?;
+
+        // Get the props...
+        let props = get_edge_props(conn, &e.id).await?;
+        e.props = Some(props);
+
+        // Add it to the list...
+        edges.push(e);
+    }
+
+    Ok(edges)
 }
 
 pub async fn check_node_exists(conn: &Connection, id: &str) -> Result<bool> {
@@ -530,7 +588,7 @@ pub async fn get_edge(conn: &Connection, params: &GetEdgeParams) -> Result<DbEdg
     let row = conn
         .prepare(
             "
-            SELECT id, edge_type, from_edge, to_edge, directed, created_at, updated_at
+            SELECT id, edge_type, from_node, to_node, directed, created_at, updated_at
             FROM edges
             WHERE id = ?;
             ",
@@ -585,14 +643,11 @@ pub async fn get_node_edges_in(conn: &Connection, node_id: &str) -> Result<Vec<S
             "
             SELECT id 
             FROM edges
-            WHERE to_edge = ? OR (NOT directed AND from_node = ?);
+            WHERE to_node = ? OR (NOT directed AND from_node = ?);
             ",
         )
         .await?
-        .query(libsql::params![
-            node_id, 
-            node_id,
-        ])
+        .query(libsql::params![node_id, node_id,])
         .await?;
 
     // Add them to a map...
@@ -613,14 +668,11 @@ pub async fn get_node_edges_out(conn: &Connection, node_id: &str) -> Result<Vec<
             "
             SELECT id 
             FROM edges
-            WHERE from_edge = ? OR (NOT directed AND to_node = ?);
+            WHERE from_node = ? OR (NOT directed AND to_node = ?);
             ",
         )
         .await?
-        .query(libsql::params![
-            node_id, 
-            node_id,
-        ])
+        .query(libsql::params![node_id, node_id,])
         .await?;
 
     // Add them to a map...

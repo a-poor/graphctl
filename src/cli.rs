@@ -6,7 +6,8 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     name = "graphctl",
     version = "v0.1.0",
     author = "Austin Poor",
-    about = "A CLI for interacting with a local graph database."
+    about = "A CLI for interacting with a local graph database",
+    long_about = ""
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -15,6 +16,7 @@ pub struct Cli {
     #[clap(
         long,
         global = true,
+        env = "GRAPHCTL_CONFIG_DIR",
         help = "Path to the config directory. Defaults to $HOME/.graphctl"
     )]
     pub config_dir: Option<String>,
@@ -92,11 +94,7 @@ pub struct CreateEdgeArgs {
     #[clap(short, long, help = "The edge's target node")]
     pub to_node: String,
 
-    #[clap(
-        short,
-        long,
-        help = "Whether the edge is directed.",
-    )]
+    #[clap(short, long, help = "Whether the edge is directed.")]
     pub directed: bool,
 
     #[clap(short, long, num_args=0.., help="A property on the edge")]
@@ -114,40 +112,43 @@ pub enum ListCmd {
 
 #[derive(Args, Debug)]
 pub struct ListNodesArgs {
-    #[clap(short, long, help = "The node's label")] 
+    #[clap(long, help = "The node's label")]
     pub has_label: Option<String>,
 
-    #[clap(short, long, num_args=0.., help = "Filter to nodes with a certain property")]
+    #[clap(long, num_args=0.., help = "Filter to nodes with a certain property")]
     pub has_prop: Vec<String>,
 
     #[clap(short, long, num_args=0.., help = "Filter to nodes with a key-value pair")]
     pub prop: Vec<String>,
 
-    #[clap(short, long, num_args=0.., help = "IDs of edges going out")]
+    #[clap(short='o', long, num_args=0.., help = "IDs of edges going out")]
     pub edge_out: Vec<String>,
 
-    #[clap(short, long, num_args=0.., help = "IDs of edges coming in")]
+    #[clap(short='i', long, num_args=0.., help = "IDs of edges coming in")]
     pub edge_in: Vec<String>,
 
-    #[clap(short, long, num_args=0.., help = "Key-value pairs of edges out. Either `EDGE_TYPE=:NodeLabel` or `EDGE_TYPE=node-id`")]
+    #[clap(long, num_args=0.., help = "Key-value pairs of edges out. Either `EDGE_TYPE=:NodeLabel` or `EDGE_TYPE=node-id`")]
     pub edge_out_to: Vec<String>,
 
-    #[clap(short, long, num_args=0.., help = "Key-value pairs of edges in. Either `EDGE_TYPE=:NodeLabel` or `EDGE_TYPE=node-id`")]
+    #[clap(long, num_args=0.., help = "Key-value pairs of edges in. Either `EDGE_TYPE=:NodeLabel` or `EDGE_TYPE=node-id`")]
     pub edge_in_from: Vec<String>,
+
+    #[clap(short, long, help = "Count the number of nodes returned")]
+    pub count: bool,
 
     #[clap(short, long, help = "Limit the number of nodes returned")]
     pub limit: Option<usize>,
 
-    #[clap(short, long, help = "Output format")]
+    #[clap(short, long, help = "Output format", value_enum, default_value_t=OutputFormat::Json)]
     pub format: OutputFormat,
 }
 
 #[derive(Args, Debug)]
 pub struct ListEdgesArgs {
-    #[clap(short, long, help = "The edge's type")]
+    #[clap(long, help = "The edge's type")]
     pub has_label: Option<String>,
 
-    #[clap(short, long, num_args=0.., help = "Filter to edges with a certain property")]
+    #[clap(long, num_args=0.., help = "Filter to edges with a certain property")]
     pub has_prop: Vec<String>,
 
     #[clap(short, long, num_args=0.., help = "Filter to edges with property key-value match")]
@@ -159,10 +160,13 @@ pub struct ListEdgesArgs {
     #[clap(short, long, help = "ID of the target node")]
     pub target_node: Option<String>,
 
+    #[clap(short, long, help = "Count the number of edges returned")]
+    pub count: bool,
+
     #[clap(short, long, help = "Limit the number of nodes returned")]
     pub limit: Option<usize>,
 
-    #[clap(short, long, help = "Output format")]
+    #[clap(short, long, help = "Output format", value_enum, default_value_t=OutputFormat::Json)]
     pub format: OutputFormat,
 }
 
@@ -242,7 +246,7 @@ pub struct UpdateEdgeArgs {
 
     #[clap(short, long, help = "Set the edge as directed")]
     pub set_directed: bool,
-    
+
     #[clap(short, long, help = "Set the edge as undirected")]
     pub set_undirected: bool,
 
@@ -337,11 +341,10 @@ pub struct SetEncryptionKeyArgs {
     pub key: String,
 }
 
-#[derive(Debug, Clone, Default, ValueEnum)]
+#[derive(Debug, Default, Clone, ValueEnum)]
 pub enum OutputFormat {
     #[default]
     Json,
-    NdJson,
+    Ndjson,
     Table,
 }
-
